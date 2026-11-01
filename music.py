@@ -8,13 +8,17 @@ import sounddevice as sd
 import keyboard as kb
 import time
 
-from matplotlib import pyplot as pt #для отладки
+from matplotlib import pyplot as pt #FOR LOGSHII
 
 
 
 # THE PARAMETERS (amplitude, freq - Hz; duration - s; samples - times), POINT'S MASSIVE (s)
 
-amp = 3
+phase = 0
+
+amp = 0.1
+
+dB_step = 2
 
 freq = 440
 
@@ -24,48 +28,70 @@ sample_rate = 44100       # for .wav it's better to use either 44100 or 48000
 
 t = np.arange(sample_rate * duration) / sample_rate
 
-#GENERATE THE SIGNAL (sin(t))
 
-#samples = np.sin(2*np.pi*amp*freq*t)
 
 #FLAGS and FUNCS
 
 Play = 1
 
-def double_freq():
+def up_freq():
     global freq
     if freq<10000:
-        freq*=2
-        sd.stop()
+        freq*=2**(1/12)
     
-def not_double_freq():
+def down_freq():
     global freq
     if freq>20:
-        freq/=2
-        sd.stop()
+        freq/=2**(1/12)
+        
+def up_amp():
+    global amp
+    if amp<1:
+        amp*= 10**(dB_step/20)
+    
+def down_amp():
+    global amp
+    if amp>0.001:
+        amp/= 10**(dB_step/20)
     
 def change_play():
     global Play
     Play = 1 - Play
-    sd.stop()
     
-kb.add_hotkey('up', double_freq)
-kb.add_hotkey('down', not_double_freq)
+kb.add_hotkey('right', up_freq)
+kb.add_hotkey('left', down_freq)
+kb.add_hotkey('up', up_amp)
+kb.add_hotkey('down', down_amp)
 
 kb.add_hotkey('space', change_play)
 
-#PLAYIN AND SHII
 
-try:
-    while True:
-        if Play:
-            n = round(freq*duration)
-            buf_freq = n/duration
-            samples = amp*np.sin(2*np.pi*buf_freq*t)
-            sd.play(samples, sample_rate, blocking = True, loop = True)
-        # pt.plot(t[-100:], samples[-100:])
-        # pt.show()
-        time.sleep(0.05)
-except KeyboardInterrupt:
-    sd.stop()
+def buf_Phase_callback(outdata, frames, time, status):
+    global phase
+    #COUNTIN A STEP
+    d_phase = 2*np.pi*freq/sample_rate
+    
+    #CREATIN A FRAMES AND A BUF
+    if Play:
+        for i in range(frames):
+            outdata[i,0] = (amp*np.sin(phase))
+            phase+=d_phase
+    else:
+        for i in range(frames):
+            outdata[i,0] = 0
+
+
+
+# #PLAYIN AND SHII
+
+with sd.OutputStream(blocksize=512,
+                     samplerate = sample_rate,
+                     channels = 1,
+                     callback = buf_Phase_callback):
+    kb.wait()
+    input()
+
+
+
+
 
