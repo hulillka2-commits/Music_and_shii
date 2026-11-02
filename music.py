@@ -18,9 +18,13 @@ phase = 0
 
 amp = 0.1
 
+aim_amp = amp
+
 dB_step = 2
 
 freq = 440
+
+aim_freq = freq
 
 duration = 1
 
@@ -34,25 +38,50 @@ t = np.arange(sample_rate * duration) / sample_rate
 
 Play = 1
 
+# class Signal_Modulations:
+#     def __init__(self, 
+#                  amp,
+#                  freq,
+#                  ):
+#         self.amp = amp
+#         self.freq = freq
+    
+#     def up_freq(self):
+#         if self.freq<10000:
+#             self.freq*=2**(1/12)
+    
+#     def down_freq(self):
+#         if self.freq>20:
+#             self.freq/=2**(1/12)
+            
+#     def up_amp(self):
+#         if self.amp<1:
+#             self.amp*= 10**(dB_step/20)
+            
+#     def down_amp(self):
+#         if self.amp>0.001:
+#             self.amp/= 10**(dB_step/20)
+        
+
 def up_freq():
-    global freq
+    global aim_freq
     if freq<10000:
-        freq*=2**(1/12)
+        aim_freq*=2**(1/12)
     
 def down_freq():
-    global freq
+    global aim_freq
     if freq>20:
-        freq/=2**(1/12)
+        aim_freq/=2**(1/12)
         
 def up_amp():
-    global amp
+    global aim_amp
     if amp<1:
-        amp*= 10**(dB_step/20)
+        aim_amp*= 10**(dB_step/20)
     
 def down_amp():
-    global amp
+    global aim_amp
     if amp>0.001:
-        amp/= 10**(dB_step/20)
+        aim_amp/= 10**(dB_step/20)
     
 def change_play():
     global Play
@@ -68,17 +97,28 @@ kb.add_hotkey('space', change_play)
 
 def buf_Phase_callback(outdata, frames, time, status):
     global phase
-    #COUNTIN A STEP
-    d_phase = 2*np.pi*freq/sample_rate
+    global amp
+    global freq
     
-    #CREATIN A FRAMES AND A BUF
-    if Play:
-        for i in range(frames):
-            outdata[i,0] = (amp*np.sin(phase))
-            phase+=d_phase
-    else:
-        for i in range(frames):
-            outdata[i,0] = 0
+    target_amp = aim_amp if Play else 0
+    # target_phase = phase + d_phase*frames
+    d_amp = (target_amp - amp)/frames
+    d_freq = (aim_freq - freq)/frames
+    
+    curr_freq = np.geomspace(freq, aim_freq, frames, endpoint = False)
+    curr_d_phase = 2*np.pi*curr_freq/sample_rate
+    curr_amp = np.linspace(amp, target_amp, frames, endpoint = False)
+    # curr_phase = np.linspace(phase, target_phase, frames, endpoint = False)
+    curr_phase = phase + np.cumsum(curr_d_phase) - curr_d_phase
+
+    # curr_phase = phase + d_phase*nums
+    # curr_amp = amp + d_amp*nums
+    
+    outdata[:, 0] = (curr_amp*(np.sin(curr_phase)))
+    
+    phase = (phase + np.cumsum(curr_d_phase)[-1])%(2*np.pi)
+    amp = aim_amp
+    freq = aim_freq
 
 
 
@@ -90,8 +130,4 @@ with sd.OutputStream(blocksize=512,
                      callback = buf_Phase_callback):
     kb.wait()
     input()
-
-
-
-
 
