@@ -38,6 +38,8 @@ t = np.arange(sample_rate * duration) / sample_rate
 
 Play = 1
 
+Wave = 0
+
 # class Signal_Modulations:
 #     def __init__(self, 
 #                  amp,
@@ -62,6 +64,10 @@ Play = 1
 #         if self.amp>0.001:
 #             self.amp/= 10**(dB_step/20)
         
+
+def wave_change():
+    global Wave
+    Wave += 1
 
 def up_freq():
     global aim_freq
@@ -91,6 +97,7 @@ kb.add_hotkey('right', up_freq)
 kb.add_hotkey('left', down_freq)
 kb.add_hotkey('up', up_amp)
 kb.add_hotkey('down', down_amp)
+kb.add_hotkey('alt', wave_change)
 
 kb.add_hotkey('space', change_play)
 
@@ -101,30 +108,32 @@ def buf_Phase_callback(outdata, frames, time, status):
     global freq
     
     target_amp = aim_amp if Play else 0
-    # target_phase = phase + d_phase*frames
-    d_amp = (target_amp - amp)/frames
-    d_freq = (aim_freq - freq)/frames
     
     curr_freq = np.geomspace(freq, aim_freq, frames, endpoint = False)
     curr_d_phase = 2*np.pi*curr_freq/sample_rate
     curr_amp = np.linspace(amp, target_amp, frames, endpoint = False)
-    # curr_phase = np.linspace(phase, target_phase, frames, endpoint = False)
     curr_phase = phase + np.cumsum(curr_d_phase) - curr_d_phase
-
-    # curr_phase = phase + d_phase*nums
-    # curr_amp = amp + d_amp*nums
     
-    outdata[:, 0] = (curr_amp*(np.sin(curr_phase)))
+    # pt.plot(curr_amp, curr_phase)
+    # pt.show()
+    signals = [
+        (np.sin(curr_phase)),
+        (np.sign(np.sin(curr_phase))),
+        (np.mod(curr_phase/(2*np.pi), 1) - 1),
+        (np.abs(2*np.mod(curr_phase/(2*np.pi), 1) - 1))
+        ]
+    
+    outdata[:, 0] = curr_amp * signals[Wave%4]
     
     phase = (phase + np.cumsum(curr_d_phase)[-1])%(2*np.pi)
-    amp = aim_amp
+    amp = target_amp
     freq = aim_freq
 
 
 
 # #PLAYIN AND SHII
 
-with sd.OutputStream(blocksize=512,
+with sd.OutputStream(blocksize = 256,
                      samplerate = sample_rate,
                      channels = 1,
                      callback = buf_Phase_callback):
