@@ -64,42 +64,84 @@ Wave = 0
 #         if self.amp>0.001:
 #             self.amp/= 10**(dB_step/20)
         
+# MIDI: (Do: n= 60) f = 440 * 2 **((n - 69) / 12)
 
-def wave_change():
-    global Wave
-    Wave += 1
+def MIDI_(n):
+    return (440 * 2 **((n - 69) / 12))
 
-def up_freq():
-    global aim_freq
-    if freq<10000:
-        aim_freq*=2**(1/12)
+white_notes = {
+    'Do': MIDI_(60),
+    'Re': MIDI_(62),
+    'Me': MIDI_(64),
+    'Fa': MIDI_(65),
+    'So': MIDI_(67),
+    'La': MIDI_(69),
+    'Si': MIDI_(71),
+}
+
+black_notes = {
+    'Do_dies': MIDI_(61),
+    'Re_dies': MIDI_(63),
+    'So_bimole': MIDI_(66),
+    'La_bimole': MIDI_(68),
+    'La_dies': MIDI_(70),
+}
+
+note_pad = {
+    'A': white_notes['Do'],
+    'S': white_notes['Re'],
+    'D': white_notes['Me'],
+    'F': white_notes['Fa'],
+    'G': white_notes['So'],
+    'H': white_notes['La'],
+    'J': white_notes['Si'],
+    'W': black_notes['Do_dies'],
+    'E': black_notes['Re_dies'],
+    'T': black_notes['So_bimole'],
+    'Y': black_notes['La_bimole'],
+    'U': black_notes,
+}
+
+
+class Modulator():
     
-def down_freq():
-    global aim_freq
-    if freq>20:
-        aim_freq/=2**(1/12)
+    def wave_change(self):
+        global Wave
+        Wave += 1
+
+    def up_freq(self):
+        global aim_freq
+        if freq<10000:
+            aim_freq*=2**(1/12)
         
-def up_amp():
-    global aim_amp
-    if amp<1:
-        aim_amp*= 10**(dB_step/20)
-    
-def down_amp():
-    global aim_amp
-    if amp>0.001:
-        aim_amp/= 10**(dB_step/20)
-    
-def change_play():
-    global Play
-    Play = 1 - Play
-    
-kb.add_hotkey('right', up_freq)
-kb.add_hotkey('left', down_freq)
-kb.add_hotkey('up', up_amp)
-kb.add_hotkey('down', down_amp)
-kb.add_hotkey('alt', wave_change)
+    def down_freq(self):
+        global aim_freq
+        if freq>20:
+            aim_freq/=2**(1/12)
+            
+    def up_amp(self):
+        global aim_amp
+        if amp<1:
+            aim_amp*= 10**(dB_step/20)
+        
+    def down_amp(self):
+        global aim_amp
+        if amp>0.001:
+            aim_amp/= 10**(dB_step/20)
+        
+    def change_play(self):
+        global Play
+        Play = 1 - Play
+        
+modulator = Modulator()
 
-kb.add_hotkey('space', change_play)
+kb.add_hotkey('right', modulator.up_freq)
+kb.add_hotkey('left', modulator.down_freq)
+kb.add_hotkey('up', modulator.up_amp)
+kb.add_hotkey('down', modulator.down_amp)
+kb.add_hotkey('alt', modulator.wave_change)
+
+kb.add_hotkey('space', modulator.change_play)
 
 
 def buf_Phase_callback(outdata, frames, time, status):
@@ -113,9 +155,7 @@ def buf_Phase_callback(outdata, frames, time, status):
     curr_d_phase = 2*np.pi*curr_freq/sample_rate
     curr_amp = np.linspace(amp, target_amp, frames, endpoint = False)
     curr_phase = phase + np.cumsum(curr_d_phase) - curr_d_phase
-    
-    # pt.plot(curr_amp, curr_phase)
-    # pt.show()
+
     signals = [
         (np.sin(curr_phase)),
         (np.sign(np.sin(curr_phase))),
