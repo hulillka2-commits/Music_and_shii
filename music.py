@@ -1,6 +1,4 @@
-# GENERATOR OF THE TONES AND ACCORDS
-
-
+# THE SYNTHESIZER
 
 # ALL THE IMPORTS
 import numpy as np
@@ -14,62 +12,77 @@ from matplotlib import pyplot as pt #FOR LOGSHII
 
 # THE PARAMETERS (amplitude, freq - Hz; duration - s; samples - times), POINT'S MASSIVE (s)
 
-# t = np.arange(sample_rate * duration) / sample_rate
-     
-     
-     
 # MIDI: (Do: n= 60) f = 440 * 2 **((n - 69) / 12)
 
 def MIDI_(n):
     return (440 * 2 **((n - 69) / 12))
 
-white_notes = {
+notes = {
     'Do': MIDI_(60),
+    'Do_dies': MIDI_(61),
     'Re': MIDI_(62),
+    'Re_dies': MIDI_(63),
     'Me': MIDI_(64),
     'Fa': MIDI_(65),
+    'So_bimole': MIDI_(66),
     'So': MIDI_(67),
+    'La_bimole': MIDI_(68),
     'La': MIDI_(69),
+    'La_dies': MIDI_(70),
     'Si': MIDI_(71),
 }
 
-black_notes = {
-    'Do_dies': MIDI_(61),
-    'Re_dies': MIDI_(63),
-    'So_bimole': MIDI_(66),
-    'La_bimole': MIDI_(68),
-    'La_dies': MIDI_(70),
-}
-
 note_pad = {
-    'a': white_notes['Do'],
-    's': white_notes['Re'],
-    'd': white_notes['Me'],
-    'f': white_notes['Fa'],
-    'g': white_notes['So'],
-    'h': white_notes['La'],
-    'j': white_notes['Si'],
-    'w': black_notes['Do_dies'],
-    'e': black_notes['Re_dies'],
-    't': black_notes['So_bimole'],
-    'y': black_notes['La_bimole'],
-    'u': black_notes['La_dies'],
+    'a': notes['Do'],
+    's': notes['Re'],
+    'd': notes['Me'],
+    'f': notes['Fa'],
+    'g': notes['So'],
+    'h': notes['La'],
+    'j': notes['Si'],
+    'w': notes['Do_dies'],
+    'e': notes['Re_dies'],
+    't': notes['So_bimole'],
+    'y': notes['La_bimole'],
+    'u': notes['La_dies'],
 }
 
 #All the logic
+
+adsr_phases = {
+    'calm': {
+        'aim': 0,
+        'time': 1
+        },
+    'attack': {
+        'aim': 1,
+        'time': 0.5,
+            },
+    'decay': {
+        'aim': 0.3,
+        'time': 0.8,
+            },
+    'sustain': {
+        'aim': 0.3,
+        'time': 1,
+            },
+    'release': {
+        'aim': 0,
+        'time': 0.5,
+            },
+}
 class Modulator:
     def __init__(
         self, 
         phase, 
         amp, 
-        # aim_amp, 
         dB_step, 
         freq, 
-        # aim_freq, 
-        duration, 
         sample_rate, 
         Wave,
-        Play,
+        adsr_phase,
+        env,
+        last_env,
         ):
         
         # self.__dict__.update({p: m for p, m in locals().items() if p!= 'self'})
@@ -79,11 +92,54 @@ class Modulator:
         self.dB_step = dB_step
         self.freq = freq
         self.aim_freq = freq
-        self.duration = duration
         self.sample_rate = sample_rate
         self.Wave = Wave
-        self.Play = Play
+        self.Play = 1
+        self.Is_Pressed = 0
+        self.adsr_phases = adsr_phase
+        self.adsr = 'calm'
+        self.env = env
+        self.aim_env = env
+        self.last_env = last_env
+        
     
+    def ADSR(self):
+        # print("OMAGAD")
+        # print(f'{self.adsr}')
+        
+        if self.adsr == 'calm':
+            self.aim_env = 0
+            self.env = 0
+            self.last_env = 0
+        
+        if self.adsr == 'attack':
+            print("ITS ATTACK")
+            self.aim_env = self.adsr_phases[self.adsr]['aim']
+            if self.env >= self.aim_env:
+                print('OMG ITS BIGGER')
+                self.adsr = 'decay'
+                self.last_env = self.env
+                
+        elif self.adsr == 'decay':
+            print("ITS DECAY")
+            self.aim_env = self.adsr_phases[self.adsr]['aim']
+            if self.env <= self.aim_env:
+                self.adsr = 'sustain'
+                self.last_env = self.env
+            
+        elif self.adsr == 'sustain':
+            print('ITS SUSTAIN')
+            self.aim_env = self.adsr_phases[self.adsr]['aim']    
+            self.last_env = self.env            
+            
+        elif self.adsr == 'release':
+            self.aim_env = self.adsr_phases[self.adsr]['aim']
+            if self.env <= self.adsr_phases[self.adsr]['aim']:
+                self.adsr = 'calm'
+                self.env = 0
+                self.last_env = 0
+                
+        
     def wave_change(self):
         self.Wave += 1
 
@@ -110,19 +166,17 @@ class Modulator:
         self.Play = 1 - self.Play
         
 modulator = Modulator(0,
-                    #   0.1,
                       0.1,
                       2,
                       440,
-                    #   440,
-                      1,
                       44100,
-                    #   np.arange(44100 * 1) / 44100,
                       0,
-                      1
+                      adsr_phases,
+                      0.1,
+                      0,
                       )
 
-Is_Pressed = 0
+
 
 kb_router = {
     'right': modulator.up_freq,
@@ -133,57 +187,96 @@ kb_router = {
     'space': modulator.change_play,
 }
 
-# synth_kb_router = {
-#     'a': modulator.set_freq,
-#     's': mo
-# }
-
 def kb_handler(event):
-    if event.name not in 'asdfghjwetyu':
-        kb_router[event.name]()
-        return
-    # synth_kb_router[event.name](event.name)
-    else:
-        if event.event_type == 'down':
-            Is_Pressed = 1   
-            modulator.set_freq(event.name)
-        elif event.event_type == 'up':
-            Is_Pressed = 0
-            modulator.aim_freq = 440
+    # print(event.event_type,event.name)
+    
+    # print(modulator.adsr)
+    if event.event_type == 'down': 
+        if event.name not in note_pad:
+            kb_router[event.name]()
+            return
+        modulator.set_freq(event.name)
+        if not modulator.Is_Pressed:
+            modulator.adsr = 'attack'
+        modulator.Is_Pressed = 1  
+    elif event.event_type == 'up':
+        modulator.Is_Pressed = 0
+        modulator.last_env = modulator.env
+        modulator.adsr = 'release'
+        # modulator.aim_freq = 440
 
 def Sound(module):
     def buf_Phase_callback(outdata, frames, time, status):
+        target_freq = module.aim_freq
+        if module.Play:
+            # target_amp = module.aim_amp if (module.adsr != 'calm')*module.Play else 0
+            target_amp = module.aim_amp
+            # target_env = module.aim_env
         
-        target_amp = module.aim_amp if module.Play else 0
         
-        curr_freq = np.geomspace(module.freq, module.aim_freq, frames, endpoint = False)
-        curr_d_phase = 2*np.pi*curr_freq/module.sample_rate
-        curr_amp = np.linspace(module.amp, target_amp, frames, endpoint = False)
-        curr_phase = module.phase + np.cumsum(curr_d_phase) - curr_d_phase
+        
+        # if module.adsr == 'calm':
+        #     curr_amp = np.linspace(module.amp, target_amp, frames, endpoint = False)
+        #     delta_env = 0
+        # else:
+            module.ADSR()
+            target_env = module.aim_env
+            block_count = module.adsr_phases[module.adsr]['time'] / ((frames/module.sample_rate))
+            #delta_env = 1(путь) / (module.adsr_phases[module.adsr]['time'] * module.sample_rate)
+            delta_env = (module.aim_env - module.last_env)/ block_count
 
+            def otladka():
+                print(f'\n')
+                print(f'phase: {module.adsr}')
+                print(f'env: {module.env}')
+                print(f'target_env: {target_env}')
+                print(f'block_count: {block_count}')
+                print(f'last_env: {module.last_env}')
+                # print(f'frames: {frames}')
+                print(f'aim_env: {module.aim_env}')
+                print(f'delta_env: {delta_env}')
+                
+            otladka()
+                
+            curr_env = np.linspace(module.env, (module.env + delta_env), frames, endpoint = False)
+                
+                
+        
+            curr_amp = curr_env*np.linspace(module.amp, target_amp, frames, endpoint = False)
+        
+        else:
+            delta_env = 0
+            target_amp = 0
+            curr_amp = np.linspace(module.amp, target_amp, frames, endpoint = False)
+        
+        curr_freq = np.geomspace(module.freq, target_freq, frames, endpoint = False)
+        curr_d_phase = 2*np.pi*curr_freq/module.sample_rate
+        # curr_amp = np.linspace(module.amp, target_amp, frames, endpoint = False)
+        curr_phase = module.phase + np.cumsum(curr_d_phase) - curr_d_phase
+        
         signals = [
             (np.sin(curr_phase)),
             (np.sign(np.sin(curr_phase))),
             (np.mod(curr_phase/(2*np.pi), 1) - 1),
             (np.abs(2*np.mod(curr_phase/(2*np.pi), 1) - 1))
             ]
-        
+        #module.ADSR()
         outdata[:, 0] = curr_amp * signals[module.Wave%4]
-        
+        module.env += delta_env
         module.phase = (module.phase + np.cumsum(curr_d_phase)[-1])%(2*np.pi)
         module.amp = target_amp
-        module.freq = module.aim_freq
+        module.freq = target_freq
+        
+            
 
 
 
     # #PLAYIN AND SHII
 
-    with sd.OutputStream(blocksize = 256,
+    with sd.OutputStream(blocksize = 2048,
                         samplerate = module.sample_rate,
                         channels = 1,
                         callback = buf_Phase_callback):
-        # kb.on_press(kb_press_handler)
-        # kb.on_release(kb_release_handler)
         kb.hook(kb_handler)
         kb.wait()
         input()
