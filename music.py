@@ -10,8 +10,6 @@ from matplotlib import pyplot as plt #FOR LOGSHII
 
 
 
-# THE PARAMETERS (amplitude, freq - Hz; duration - s; samples - times), POINT'S MASSIVE (s)
-
 # MIDI: (Do: n= 60) f = 440 * 2 **((n - 69) / 12)
 
 def MIDI_(n):
@@ -47,6 +45,8 @@ note_pad = {
     'u': notes['La_dies'],
 }
 
+# calm and sustain phases dgaf about time or vector (consts)
+
 adsr_phases_params = {
     'calm': {
         'aim': 0,
@@ -75,16 +75,15 @@ adsr_phases_params = {
             },
     }
 
-#All the logic
-class Track:
+#ALL THE LOGIC AND FUNCS
+class Note:
     def __init__(
         self, 
-        phase, 
         freq, 
         ):
         
         # self.__dict__.update({p: m for p, m in locals().items() if p!= 'self'})
-        self.phase = phase
+        self.phase = 0
         self.freq = freq
         self.aim_freq = freq
         self.Is_Pressed = 0
@@ -99,46 +98,45 @@ class Track:
 
 note_track = {
     'a': 
-        Track(0, 
+        Note( 
               note_pad['a']),
     's': 
-        Track(0, 
+        Note(
               note_pad['s']),
     'd': 
-        Track(0, 
+        Note( 
               note_pad['d']),
     'f': 
-        Track(0, 
+        Note( 
               note_pad['f']),
     'g': 
-        Track(0, 
+        Note( 
               note_pad['g']),
     'h': 
-        Track(0, 
+        Note( 
               note_pad['h']),
     'j': 
-        Track(0, 
+        Note( 
               note_pad['j']),
     'w': 
-        Track(0, 
+        Note( 
               note_pad['w']),
     'e': 
-        Track(0, 
+        Note( 
               note_pad['e']),
     't': 
-        Track(0, 
+        Note( 
               note_pad['t']),
     'y': 
-        Track(0, 
+        Note( 
               note_pad['y']),
     'u': 
-        Track(0, 
+        Note( 
               note_pad['u']),
 }
 
 tracks = set(
-    
-)
+                )
 
 
 class Synthesizer():
@@ -147,9 +145,12 @@ class Synthesizer():
         amp,
         dB_step,
         sample_rate,
-        Wave,
+        # wave,
         adsr_phases,
         lpf,
+        d_lfo,
+        f_lfo,
+        
         ):
 
         self.amp = amp
@@ -158,37 +159,69 @@ class Synthesizer():
         self.lpf = lpf
         self.aim_lpf = lpf
         self.sample_rate = sample_rate
-        self.Wave = Wave
+        self.wave = 0
         self.adsr_phases = adsr_phases
         self.Play = 1
+        
+        self.d_lfo = d_lfo
+        self.f_lfo = f_lfo
+        self.k_lfo = 0
         
         self.dB_koef = 10**(self.dB_step/20)
                 
                 
+        self.lfo_phase = 0
+        
                 
+                
+    def LFO(self):
+        lfo_curr_d_phase = np.full(256, 2*np.pi*self.f_lfo/self.sample_rate)
+        # print(lfo_curr_d_phase)
+        # lfo_curr_phase = self.lfo_phase + lfo_curr_d_phase * (256-1) 
+        lfo_curr_phase = self.lfo_phase + np.cumsum(lfo_curr_d_phase)
+
+        # self.lfo_phase = (self.lfo_phase + lfo_curr_d_phase * (256))%(2*np.pi)
+        
+        self.lfo_phase = (self.lfo_phase + np.cumsum(lfo_curr_d_phase)[-1])%(2*np.pi)
+
+                
+        # return self.Wave_shaper(lfo_curr_phase)
+        return np.sin(lfo_curr_phase)
+        
+        
+        
     def change_play(self):
         self.Play = 1 - self.Play
                 
-    def wave_change(self):
-        self.Wave += 1
+    def Wave_change(self):
+        self.wave += 1
 
-    def up_lpf(self):
+    def Wave_shaper(self, curr_phase):
+        shapes = [      
+                (np.sin(curr_phase)),
+                (np.sign(np.sin(curr_phase))),
+                (np.mod(curr_phase/(2*np.pi), 1) - 1),
+                (np.abs(2*np.mod(curr_phase/(2*np.pi), 1) - 1)),
+                        ]
+        return shapes[self.wave%4]
+
+    def Up_lpf(self):
         if self.aim_lpf * self.dB_koef < 1:
             self.aim_lpf *= self.dB_koef
             
-    def down_lpf(self):
+    def Down_lpf(self):
         if self.aim_lpf / self.dB_koef > 0.005:
             self.aim_lpf /= self.dB_koef
 
-    def up_amp(self):
+    def Up_amp(self):
         if self.aim_amp / self.dB_koef < 1:
             self.aim_amp *= self.dB_koef
         
-    def down_amp(self):
+    def Down_amp(self):
         if self.aim_amp / self.dB_koef > 0.001:
             self.aim_amp /= self.dB_koef
         
-    def change_play(self):
+    def Change_play(self):
         self.Play = 1 - self.Play
         
     def ADSR(self, module):
@@ -221,9 +254,9 @@ class Synthesizer():
                 module.env = 0
                 module.last_env = 0
                 
-#LPF formula - curr_exit = last_exit + k * (curr_enter - last_exit)
+    #LPF formula - curr_exit = last_exit + k * (curr_enter - last_exit)
                 
-    def LPF(self, track):
+    def LPF(self, track):        
         track.curr_signal[0] = track.last_signal[-1] + self.lpf * (track.curr_signal[0] - track.last_signal[-1])
         for i in range(1, len(track.curr_signal)):
             track.curr_signal[i] = track.curr_signal[i-1] + self.lpf * (track.curr_signal[i] - track.curr_signal[i-1])
@@ -234,17 +267,17 @@ class Synthesizer():
         kb_router = {
             # 'right': module.up_freq,
             # 'left': module.down_freq,
-            'right': self.up_lpf,
-            'left': self.down_lpf,
-            'up': self.up_amp,
-            'down': self.down_amp,
-            'alt': self.wave_change,
-            'space': self.change_play,
+            'right': self.Up_lpf,
+            'left': self.Down_lpf,
+            'up': self.Up_amp,
+            'down': self.Down_amp,
+            'alt': self.Wave_change,
+            'space': self.Change_play,
         }
         
         def kb_handler(event):
             if event.event_type == 'down': 
-                print('down')
+                # print('down')
                 if event.name not in note_pad:
                     kb_router.get(event.name)()
                     return
@@ -255,7 +288,7 @@ class Synthesizer():
                 note_track[event.name].Is_Pressed = 1
                 
             elif event.event_type == 'up':
-                print('up')
+                # print('up')
                 if event.name not in note_pad:
                     return
 
@@ -271,68 +304,83 @@ class Synthesizer():
             if self.Play:
                 target_amp = self.aim_amp
                 target_lpf = self.aim_lpf
+                
+                lfo_wave = self.LFO()
 
                 for track in tracks:
                     target_freq = track.aim_freq
                     self.ADSR(track)
+                    
                     block_count = self.adsr_phases[track.adsr]['time'] / ((frames/self.sample_rate))
-                    #delta_env = 1(distance) / (module.adsr_phases[module.adsr]['time'] * module.sample_rate) - alternate formula
                     delta_env = (track.aim_env - track.last_env)/ block_count
                     
                     curr_env = np.linspace(track.env, (track.env + delta_env), frames, endpoint = False)
 
 
                     def otladka():
-                        # print(f'\n')
+                        print(f'\n')
                         # print(f'phase: {track.adsr}')
                         # print(f'env: {module.env}')
                         # print(f'block_count: {block_count}')
                         # print(f'last_env: {module.last_env}')
                         # print(f'aim_env: {track.aim_env}')
+                        # print(f'amp: {self.amp}')
                         # print(f'delta_env: {delta_env}')
-                        print(f'length: {len(tracks)}')
+                        # print(f'length: {len(tracks)}')
+                        # print(f'lfo: {self.lfo_phase}')
                         
-                    otladka()
+                    # otladka()
                 
                 
-                    curr_freq = np.geomspace(track.freq, target_freq, frames, endpoint = False)
+                    curr_freq = np.geomspace(track.freq, target_freq, frames, endpoint = False) 
                     curr_d_phase = 2*np.pi*curr_freq/self.sample_rate
                     curr_phase = track.phase + np.cumsum(curr_d_phase) - curr_d_phase
+                    
+                    # #LFO ----------------
+                    
+                    # lfo_curr_d_phase = 2*np.pi*self.f_lfo/self.sample_rate
+                    # lfo_curr_phase = self.lfo_phase + np.cumsum(lfo_curr_d_phase) - lfo_curr_d_phase
+                    # lfo_wave = self.Wave_shaper(lfo_curr_phase)
+                    
+                    
+                    
+                    # -------------------
                     
                     # if module.env + delta_env <0:
                     #     delta_env = -1*module.env
                     if track.env + delta_env <= 2 and track.env + delta_env >= 0:
+                    # if (self.adsr_phases[track.adsr]['vector'])*(track.env + delta_env) < (self.adsr_phases[track.adsr]['vector'])*(track.aim_env):
                         track.env += delta_env
                         
+                    # else:
+                    #     track.env += (track.aim_env - (track.env + delta_env))
+    
                     track.phase = (track.phase + np.cumsum(curr_d_phase)[-1])%(2*np.pi)
-                    self.amp = target_amp
                     self.lpf = target_lpf
                     
                     track.freq = target_freq
                     
-                    signal_shape = [
-                        (np.sin(curr_phase)),
-                        (np.sign(np.sin(curr_phase))),
-                        (np.mod(curr_phase/(2*np.pi), 1) - 1),
-                        (np.abs(2*np.mod(curr_phase/(2*np.pi), 1) - 1))
-                        ]
-                    
-                    track.curr_signal = signal_shape[self.Wave%4]
+                    track.curr_signal = self.Wave_shaper(curr_phase)
                     
                     track.curr_signal = self.LPF(track)
                     
                     signals += curr_env*track.curr_signal
-                    track.last_signal = track.curr_signal
-
-                    
+                    track.last_signal = track.curr_signal                    
                 
             else:
                 delta_env = 0
                 target_amp = 0
                 
+                self.lfo_phase = 0
+                lfo_wave = 0
 
+            
+            
+            curr_amp = np.linspace(self.amp, target_amp, frames, endpoint = False) * ( 1 + self.d_lfo * lfo_wave )
+                    
 
-            curr_amp = np.linspace(self.amp, target_amp, frames, endpoint = False)
+            self.amp = target_amp
+
             
             outdata[:, 0] = curr_amp * signals
 
@@ -348,10 +396,12 @@ class Synthesizer():
             kb.wait('esc')
 
 Syn = Synthesizer(0.1,
-                2,
+                0.5,
                 44100,
-                0,
+                # 0,
                 adsr_phases_params,
-                0.1
+                0.1,
+                0.5,
+                5,
                   )        
 Syn.Sound(tracks)
