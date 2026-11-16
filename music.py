@@ -4,7 +4,7 @@
 import numpy as np
 import sounddevice as sd
 import keyboard as kb
-import time
+import time as t
 
 from matplotlib import pyplot as plt #FOR LOGSHII
 
@@ -136,7 +136,8 @@ note_track = {
 }
 
 tracks = set(
-                )
+             )
+
 
 
 class Synthesizer():
@@ -165,26 +166,14 @@ class Synthesizer():
         self.d_lfo = d_lfo
         self.f_lfo = f_lfo
         self.k_lfo = 0
+        self.lfo_phase = 0
+
                 
         self.dB_koef = 10**(self.dB_step/20)
+                        
                 
-        self.lfo_phase = 0
         
-                
-                
-    def LFO(self):
-        lfo_curr_d_phase = np.full(256, 2*np.pi*self.f_lfo/self.sample_rate)
-        # lfo_curr_phase = self.lfo_phase + lfo_curr_d_phase * (256-1) 
-        lfo_curr_phase = self.lfo_phase + np.cumsum(lfo_curr_d_phase)
-
-        # self.lfo_phase = (self.lfo_phase + lfo_curr_d_phase * (256))%(2*np.pi)
-        
-        self.lfo_phase = (self.lfo_phase + np.cumsum(lfo_curr_d_phase)[-1])%(2*np.pi)
-
-        # return self.Wave_shaper(lfo_curr_phase)
-        return np.sin(lfo_curr_phase)
-        
-    def change_play(self):
+    def Change_play(self):
         self.Play = 1 - self.Play
                 
     def Wave_change(self):
@@ -260,7 +249,15 @@ class Synthesizer():
             track.curr_signal[i] = track.curr_signal[i-1] + curr_lpf[i-1] * (track.curr_signal[i] - track.curr_signal[i-1])
         return track.curr_signal
         
+    def LFO(self, frames):
+        lfo_curr_d_phase = np.full(frames, 2*np.pi*self.f_lfo/self.sample_rate)
+        lfo_curr_phase = self.lfo_phase + np.cumsum(lfo_curr_d_phase)
         
+        self.lfo_phase = (self.lfo_phase + np.cumsum(lfo_curr_d_phase)[-1])%(2*np.pi)
+
+        return np.sin(lfo_curr_phase)
+        
+   
         
     def Sound(self, tracks):
         
@@ -278,7 +275,6 @@ class Synthesizer():
         
         def kb_handler(event):
             if event.event_type == 'down': 
-                # print('down')
                 if event.name not in note_pad:
                     kb_router.get(event.name)()
                     return
@@ -289,7 +285,6 @@ class Synthesizer():
                 note_track[event.name].Is_Pressed = 1
                 
             elif event.event_type == 'up':
-                # print('up')
                 if event.name not in note_pad:
                     return
 
@@ -300,6 +295,9 @@ class Synthesizer():
 
         
         def buf_Phase_callback(outdata, frames, time, status):
+            
+            # start = t.perf_counter()
+            
             signals = np.zeros((frames, ))
 
         #CHECKIN IF ITS ON
@@ -308,7 +306,7 @@ class Synthesizer():
                 target_amp = self.aim_amp
                 target_lpf = self.aim_lpf
                 
-                lfo_wave = self.LFO()
+                lfo_wave = self.LFO(frames)
 
                 for track in tracks:
                     target_freq = track.aim_freq
@@ -386,10 +384,13 @@ class Synthesizer():
             
             outdata[:, 0] = curr_amp * signals
 
-                
+            # end = t.perf_counter()
+            # print((end-start)*1000)
+
+
 
     #PLAYIN AND SHII
-        
+
         with sd.OutputStream(blocksize = 256,
                             samplerate = self.sample_rate,
                             channels = 1,
@@ -400,7 +401,7 @@ class Synthesizer():
 
 
 Syn = Synthesizer(0.1,
-                0.5,
+                0.6,
                 44100,
                 adsr_phases_params,
                 0.1,
