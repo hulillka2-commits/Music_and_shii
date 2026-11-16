@@ -145,12 +145,10 @@ class Synthesizer():
         amp,
         dB_step,
         sample_rate,
-        # wave,
         adsr_phases,
         lpf,
         d_lfo,
         f_lfo,
-        
         ):
 
         self.amp = amp
@@ -162,13 +160,13 @@ class Synthesizer():
         self.wave = 0
         self.adsr_phases = adsr_phases
         self.Play = 1
-        
+        self.mode = 0
+
         self.d_lfo = d_lfo
         self.f_lfo = f_lfo
         self.k_lfo = 0
-        
-        self.dB_koef = 10**(self.dB_step/20)
                 
+        self.dB_koef = 10**(self.dB_step/20)
                 
         self.lfo_phase = 0
         
@@ -176,7 +174,6 @@ class Synthesizer():
                 
     def LFO(self):
         lfo_curr_d_phase = np.full(256, 2*np.pi*self.f_lfo/self.sample_rate)
-        # print(lfo_curr_d_phase)
         # lfo_curr_phase = self.lfo_phase + lfo_curr_d_phase * (256-1) 
         lfo_curr_phase = self.lfo_phase + np.cumsum(lfo_curr_d_phase)
 
@@ -184,17 +181,17 @@ class Synthesizer():
         
         self.lfo_phase = (self.lfo_phase + np.cumsum(lfo_curr_d_phase)[-1])%(2*np.pi)
 
-                
         # return self.Wave_shaper(lfo_curr_phase)
         return np.sin(lfo_curr_phase)
-        
-        
         
     def change_play(self):
         self.Play = 1 - self.Play
                 
     def Wave_change(self):
         self.wave += 1
+
+    def Mode_change(self):
+        self.mode += 1
 
     def Wave_shaper(self, curr_phase):
         shapes = [      
@@ -256,11 +253,14 @@ class Synthesizer():
                 
     #LPF formula - curr_exit = last_exit + k * (curr_enter - last_exit)
                 
-    def LPF(self, track):        
-        track.curr_signal[0] = track.last_signal[-1] + self.lpf * (track.curr_signal[0] - track.last_signal[-1])
+    def LPF(self, track, curr_lpf):        
+        
+        track.curr_signal[0] = track.last_signal[-1] + curr_lpf[0] * (track.curr_signal[0] - track.last_signal[-1])
         for i in range(1, len(track.curr_signal)):
-            track.curr_signal[i] = track.curr_signal[i-1] + self.lpf * (track.curr_signal[i] - track.curr_signal[i-1])
+            track.curr_signal[i] = track.curr_signal[i-1] + curr_lpf[i-1] * (track.curr_signal[i] - track.curr_signal[i-1])
         return track.curr_signal
+        
+        
         
     def Sound(self, tracks):
         
@@ -272,6 +272,7 @@ class Synthesizer():
             'up': self.Up_amp,
             'down': self.Down_amp,
             'alt': self.Wave_change,
+            'shift': self.Mode_change,
             'space': self.Change_play,
         }
         
@@ -301,6 +302,8 @@ class Synthesizer():
         def buf_Phase_callback(outdata, frames, time, status):
             signals = np.zeros((frames, ))
 
+        #CHECKIN IF ITS ON
+
             if self.Play:
                 target_amp = self.aim_amp
                 target_lpf = self.aim_lpf
@@ -309,14 +312,16 @@ class Synthesizer():
 
                 for track in tracks:
                     target_freq = track.aim_freq
+                    
+                #DEALIN WITH ADSR(COUNTIN ENV)
+                
                     self.ADSR(track)
-                    
                     block_count = self.adsr_phases[track.adsr]['time'] / ((frames/self.sample_rate))
-                    delta_env = (track.aim_env - track.last_env)/ block_count
-                    
+                    delta_env = (track.aim_env - track.last_env) / block_count
                     curr_env = np.linspace(track.env, (track.env + delta_env), frames, endpoint = False)
 
-
+                #LOGS
+                
                     def otladka():
                         print(f'\n')
                         # print(f'phase: {track.adsr}')
@@ -332,41 +337,40 @@ class Synthesizer():
                     # otladka()
                 
                 
-                    curr_freq = np.geomspace(track.freq, target_freq, frames, endpoint = False) 
+                #COUNTIN FREQ, PHASE AND LPF
+                
+                    curr_freq = np.geomspace(track.freq, target_freq, frames, endpoint = False) * (1 + self.d_lfo * lfo_wave * (self.mode % 4 == 3))
                     curr_d_phase = 2*np.pi*curr_freq/self.sample_rate
                     curr_phase = track.phase + np.cumsum(curr_d_phase) - curr_d_phase
                     
-                    # #LFO ----------------
-                    
-                    # lfo_curr_d_phase = 2*np.pi*self.f_lfo/self.sample_rate
-                    # lfo_curr_phase = self.lfo_phase + np.cumsum(lfo_curr_d_phase) - lfo_curr_d_phase
-                    # lfo_wave = self.Wave_shaper(lfo_curr_phase)
-                    
-                    
-                    
-                    # -------------------
-                    
-                    # if module.env + delta_env <0:
-                    #     delta_env = -1*module.env
+                    curr_lpf = np.linspace(self.lpf, target_lpf, frames, endpoint = False) * (1 + self.d_lfo * lfo_wave * (self.mode % 4 == 2))
+
+                #CHECKIN ENV LIMITS
+                
                     if track.env + delta_env <= 2 and track.env + delta_env >= 0:
                     # if (self.adsr_phases[track.adsr]['vector'])*(track.env + delta_env) < (self.adsr_phases[track.adsr]['vector'])*(track.aim_env):
                         track.env += delta_env
                         
                     # else:
                     #     track.env += (track.aim_env - (track.env + delta_env))
-    
+                
+                #UPDATE PHASE, FREQ AND LPF
+                
                     track.phase = (track.phase + np.cumsum(curr_d_phase)[-1])%(2*np.pi)
-                    self.lpf = target_lpf
-                    
                     track.freq = target_freq
+
+                    self.lpf = target_lpf       
                     
+                #FINALLY CREATIN ONE AND SUMMIN IT(POLYPHONY)
+                
                     track.curr_signal = self.Wave_shaper(curr_phase)
-                    
-                    track.curr_signal = self.LPF(track)
+                    track.curr_signal = self.LPF(track, curr_lpf)
                     
                     signals += curr_env*track.curr_signal
                     track.last_signal = track.curr_signal                    
                 
+        #IF PAUSE OR SOME
+            
             else:
                 delta_env = 0
                 target_amp = 0
@@ -374,11 +378,9 @@ class Synthesizer():
                 self.lfo_phase = 0
                 lfo_wave = 0
 
+        #COUNTIN THEN UPDATIN AMP AND FINNALY PACKIN IT
             
-            
-            curr_amp = np.linspace(self.amp, target_amp, frames, endpoint = False) * ( 1 + self.d_lfo * lfo_wave )
-                    
-
+            curr_amp = np.linspace(self.amp, target_amp, frames, endpoint = False) * (1 + self.d_lfo * lfo_wave * (self.mode % 4 == 1))
             self.amp = target_amp
 
             
@@ -386,7 +388,7 @@ class Synthesizer():
 
                 
 
-        # #PLAYIN AND SHII
+    #PLAYIN AND SHII
         
         with sd.OutputStream(blocksize = 256,
                             samplerate = self.sample_rate,
@@ -395,10 +397,11 @@ class Synthesizer():
             kb.hook(kb_handler)
             kb.wait('esc')
 
+
+
 Syn = Synthesizer(0.1,
                 0.5,
                 44100,
-                # 0,
                 adsr_phases_params,
                 0.1,
                 0.5,
